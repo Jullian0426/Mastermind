@@ -1,119 +1,111 @@
-class Player
-  attr_accessor :role
+class Code
+  attr_reader :code
 
-  def initialize(role)
-    @role = role
-  end
-end
-
-class CodeMaker < Player
-  attr_reader :secret_code
-
-  def initialize(role, colors)
-    super(role)  # Calls Player's initialize method
-    @secret_code = generate_secret_code(colors)
-    puts "CodeMaker's secret code is #{@secret_code}"
+  def initialize(code = nil)
+    @code = code || generate_unique_code
   end
 
-  def generate_secret_code(colors)
-    colors.sample(4)
+  def generate_unique_code
+    (1..6).to_a.shuffle.take(4)
   end
-  
-  def provide_feedback(guess)
-    exact_matches = 0
-    color_matches = 0
 
+  def check_guess(guess)
+    feedback = { correct: 0, wrong_position: 0 }
     guess_copy = guess.dup
-    secret_copy = @secret_code.dup
+    code_copy = @code.dup
 
-    # First pass: Check for exact matches
-    guess_copy.each_with_index do |color, index|
-      if color == secret_copy[index]
-        exact_matches += 1
-        guess_copy[index] = nil
-        secret_copy[index] = nil
+    # First pass: check for correct number and position
+    guess_copy.each_with_index do |g, i|
+      if g == code_copy[i]
+        feedback[:correct] += 1
+        guess_copy[i] = code_copy[i] = nil
       end
     end
 
-    # Second pass: Check for color matches
-    guess_copy.each do |color|
-      if color && secret_copy.include?(color)
-        color_matches += 1
-        secret_copy[secret_copy.index(color)] = nil
+    # Second pass: check for correct number but wrong position
+    guess_copy.compact.each do |g|
+      if index = code_copy.index(g)
+        feedback[:wrong_position] += 1
+        code_copy[index] = nil
       end
     end
 
-    [exact_matches, color_matches]
+    feedback
   end
 end
 
-
-class CodeBreaker < Player
-  def make_guess
-    puts "Enter your guess (e.g., Red Blue Green Yellow):"
-    gets.chomp.split
-  end
-end
-
-
-class Board
-  def initialize
-    @guesses = []
-    @feedbacks = []
+class Player
+  def guess
+    puts "Enter your guess (e.g., '1 2 3 4'):"
+    gets.chomp.split.map(&:to_i)
   end
 
-  def add_guess(guess, feedback)
-    @guesses << guess
-    @feedbacks << feedback
-  end
-
-  def display
-    puts "Current game state:"
-    @guesses.each_with_index do |guess, index|
-      feedback = @feedbacks[index]
-      puts "#{index + 1}: #{guess.join(' ')} - Exact Matches: #{feedback[0]}, Color Matches: #{feedback[1]}"
-    end
-  end
-end
-
-
-class Game
-  def initialize
-    @colors = ["Red", "Blue", "Green", "Yellow", "Orange", "Purple"]
-    setup_players
-    @board = Board.new
-    @turns_left = 12
-  end
-
-  def setup_players
-    puts "Do you want to be the codemaker or the codebreaker? (Enter 'codemaker' or 'codebreaker')"
-    role = gets.chomp
-    if role == 'codemaker'
-      @codemaker = CodeMaker.new(role, @colors)
-      @codebreaker = CodeBreaker.new('codebreaker')
+  def make_code
+    puts "Enter your secret code for the computer to guess (e.g., '1 2 3 4'):"
+    input = gets.chomp.split.map(&:to_i)
+    if input.uniq.length == 4 && input.all? { |num| num.between?(1, 6) }
+      input
     else
-      @codemaker = CodeMaker.new('codemaker', @colors)
-      @codebreaker = CodeBreaker.new(role)
+      puts "Invalid code! Please enter four unique digits between 1 and 6."
+      make_code
+    end
+  end
+end
+
+class Computer
+  def initialize
+    @possible_guesses = (1..6).to_a.permutation(4).to_a
+  end
+
+  def generate_code
+    Code.new
+  end
+
+  def guess(feedback = nil)
+    @possible_guesses.sample
+  end
+end
+
+class Mastermind
+  def initialize
+    @player = Player.new
+    @computer = Computer.new
+    @codebreaker = nil
+    @codemaker = nil
+  end
+
+  def setup_game
+    puts "Do you want to be the codebreaker or the codemaker? (Enter 'breaker' or 'maker'):"
+    choice = gets.chomp
+    if choice == 'breaker'
+      @codebreaker = @player
+      @codemaker = @computer
+      @secret_code = @computer.generate_code
+    else
+      @codebreaker = @computer
+      @codemaker = @player
+      @secret_code = Code.new(@player.make_code)
     end
   end
 
   def play
-    puts "Welcome to Mastermind!"
-    while @turns_left > 0
-      guess = @codebreaker.make_guess
-      feedback = @codemaker.provide_feedback(guess)
-      @board.add_guess(guess, feedback)
-      @board.display
-      if feedback[0] == 4  # All pegs are correct
-        puts "Congratulations, you've cracked the code!"
+    setup_game
+    feedback = nil
+    12.times do |turn|
+      puts "Turn #{turn + 1}:"
+      guess = @codebreaker.guess(feedback)  # Pass previous feedback to guess method
+      puts "Guess: #{guess.join(' ')}"  # Display the guess
+      feedback = @secret_code.check_guess(guess)
+      puts "Feedback: Correct: #{feedback[:correct]}, Wrong Position: #{feedback[:wrong_position]}"
+      if feedback[:correct] == 4
+        puts "The codebreaker has won!"
         return
       end
-      @turns_left -= 1
     end
-    puts "Game over! You've used all your turns."
-    puts "The secret code was: #{@codemaker.secret_code.join(', ')}"
+    puts "The codemaker has won!"
   end
 end
 
-game = Game.new
+# To play the game:
+game = Mastermind.new
 game.play
